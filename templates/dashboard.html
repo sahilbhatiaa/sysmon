@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Monitor</title>
+<style>
+  :root {
+    --bg: #e9ece6; --panel: #f8f9f6; --ink: #1e2a2f; --muted: #5e6b6f;
+    --line: #cfd5cd; --track: #dde2db;
+    --ok: #0f6e7c; --warn: #b7791f; --bad: #b3382c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161d20; --panel: #1f282c; --ink: #e6ebe8; --muted: #93a2a6;
+      --line: #324046; --track: #2b373c;
+      --ok: #4fb3c2; --warn: #e0a84a; --bad: #e0705f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.45;
+  }
+  main { max-width: 980px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  h1 { font-size: 1.4rem; margin: 0; font-weight: 650; }
+  .meta { color: var(--muted); font-size: .9rem; }
+  .status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 6px; }
+  .status.off { background: var(--bad); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .panel.wide { grid-column: 1 / -1; }
+  h2 { font-size: .95rem; margin: 0 0 10px; font-weight: 600; color: var(--muted); }
+  .big { font-size: 3rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+  .big small { font-size: 1.2rem; font-weight: 500; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .88rem; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .bar { height: 10px; background: var(--track); border-radius: 5px; overflow: hidden; margin-top: 12px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .5s ease, background .3s; }
+  .bar > i.warn { background: var(--warn); }
+  .bar > i.bad { background: var(--bad); }
+  .cores { display: flex; gap: 6px; align-items: flex-end; height: 90px; margin-top: 16px; }
+  .core { flex: 1; min-width: 8px; max-width: 48px; height: 100%; display: flex; flex-direction: column;
+          justify-content: flex-end; align-items: center; gap: 4px; font-size: .7rem; color: var(--muted); }
+  .core .col { width: 100%; flex: 1; background: var(--track); border-radius: 4px; display: flex; align-items: flex-end; overflow: hidden; }
+  .core .col i { display: block; width: 100%; height: 0; background: var(--ok); transition: height .5s ease; }
+  .core .col i.warn { background: var(--warn); }
+  .core .col i.bad { background: var(--bad); }
+  .row { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; padding: 3px 0; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>System Monitor</h1>
+    <div class="meta"><span id="status" class="status"></span><span id="host">connecting…</span> · up <span id="uptime">–</span></div>
+  </header>
+
+  <div class="grid">
+    <section class="panel wide">
+      <h2>CPU</h2>
+      <div class="big"><span id="cpu">–</span><small>%</small></div>
+      <div class="sub">Load average (1 / 5 / 15 min): <span id="load">–</span></div>
+      <div class="cores" id="cores" aria-label="Usage per CPU core"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Memory</h2>
+      <div class="big"><span id="mem">–</span><small>%</small></div>
+      <div class="bar"><i id="mem-bar"></i></div>
+      <div class="sub" id="mem-detail">–</div>
+    </section>
+
+    <section class="panel">
+      <h2>Disk (/)</h2>
+      <div class="big"><span id="disk">–</span><small>%</small></div>
+      <div class="bar"><i id="disk-bar"></i></div>
+      <div class="sub" id="disk-detail">–</div>
+    </section>
+
+    <section class="panel">
+      <h2>Network</h2>
+      <div class="row"><span>Download</span><strong id="down">–</strong></div>
+      <div class="row"><span>Upload</span><strong id="up">–</strong></div>
+      <div class="sub">Total received <span id="recv">–</span>, sent <span id="sent">–</span></div>
+    </section>
+
+    <section class="panel wide">
+      <h2>Busiest processes</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th class="num">PID</th><th class="num">CPU %</th><th class="num">Memory %</th></tr></thead>
+          <tbody id="procs"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let last = null;
+
+  const level = (v) => (v >= 90 ? "bad" : v >= 70 ? "warn" : "");
+  const setBar = (el, v) => { el.style.width = v + "%"; el.className = level(v); };
+
+  function bytes(n) {
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return n.toFixed(i === 0 ? 0 : 1) + " " + units[i];
+  }
+
+  function duration(s) {
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+    return (d ? d + "d " : "") + h + "h " + m + "m";
+  }
+
+  function drawCores(values) {
+    const box = $("cores");
+    if (box.children.length !== values.length) {
+      box.replaceChildren(...values.map((_, i) => {
+        const core = document.createElement("div");
+        core.className = "core";
+        core.innerHTML = '<div class="col"><i></i></div><span>' + (i + 1) + "</span>";
+        return core;
+      }));
+    }
+    values.forEach((v, i) => {
+      const bar = box.children[i].querySelector("i");
+      bar.style.height = v + "%";
+      bar.className = level(v);
+      box.children[i].title = "Core " + (i + 1) + ": " + v + "%";
+    });
+  }
+
+  function drawProcs(list) {
+    $("procs").replaceChildren(...list.map((p) => {
+      const tr = document.createElement("tr");
+      [p.name, p.pid, p.cpu, p.memory].forEach((val, i) => {
+        const td = document.createElement("td");
+        if (i > 0) td.className = "num";
+        td.textContent = val;
+        tr.appendChild(td);
+      });
+      return tr;
+    }));
+  }
+
+  function render(d) {
+    $("host").textContent = d.hostname;
+    $("uptime").textContent = duration(d.uptime_seconds);
+    $("cpu").textContent = d.cpu_percent.toFixed(1);
+    $("load").textContent = d.load_avg.join(" / ");
+    drawCores(d.per_cpu);
+
+    $("mem").textContent = d.memory_percent.toFixed(1);
+    setBar($("mem-bar"), d.memory_percent);
+    $("mem-detail").textContent = bytes(d.memory_used) + " of " + bytes(d.memory_total) + " used";
+
+    $("disk").textContent = d.disk_percent.toFixed(1);
+    setBar($("disk-bar"), d.disk_percent);
+    $("disk-detail").textContent = bytes(d.disk_used) + " of " + bytes(d.disk_total) + " used";
+
+    $("recv").textContent = bytes(d.net_recv);
+    $("sent").textContent = bytes(d.net_sent);
+    const now = Date.now();
+    if (last) {
+      const secs = (now - last.t) / 1000;
+      $("down").textContent = bytes((d.net_recv - last.recv) / secs) + "/s";
+      $("up").textContent = bytes((d.net_sent - last.sent) / secs) + "/s";
+    }
+    last = { t: now, recv: d.net_recv, sent: d.net_sent };
+
+    drawProcs(d.processes);
+  }
+
+  async function tick() {
+    try {
+      const res = await fetch("/stats");
+      if (!res.ok) throw new Error(res.status);
+      render(await res.json());
+      $("status").className = "status";
+    } catch (e) {
+      $("status").className = "status off";
+      $("host").textContent = "Connection lost, retrying…";
+    }
+  }
+
+  tick();
+  setInterval(tick, 2000);
+</script>
+</body>
+</html>
