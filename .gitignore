@@ -1,1 +1,3 @@
-printf "venv/\n__pycache__/\n.pytest_cache/\n" > .gitignore
+venv/
+__pycache__/
+.pytest_cache/
